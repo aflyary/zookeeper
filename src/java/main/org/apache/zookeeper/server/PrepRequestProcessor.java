@@ -72,9 +72,9 @@ import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
@@ -247,9 +247,9 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
     void rollbackPendingChanges(long zxid, Map<String, ChangeRecord>pendingChangeRecords) {
         synchronized (zks.outstandingChanges) {
             // Grab a list iterator starting at the END of the list so we can iterate in reverse
-            ListIterator<ChangeRecord> iter = zks.outstandingChanges.listIterator(zks.outstandingChanges.size());
-            while (iter.hasPrevious()) {
-                ChangeRecord c = iter.previous();
+            Iterator<ChangeRecord> iter = zks.outstandingChanges.descendingIterator();
+            while (iter.hasNext()) {
+                ChangeRecord c = iter.next();
                 if (c.zxid == zxid) {
                     iter.remove();
                     // Remove all outstanding changes for paths of this multi.
@@ -265,7 +265,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 return;
             }
 
-            long firstZxid = zks.outstandingChanges.get(0).zxid;
+            long firstZxid = zks.outstandingChanges.peek().zxid;
 
             for (ChangeRecord c : pendingChangeRecords.values()) {
                 // Don't apply any prior change records less than firstZxid.
@@ -817,10 +817,11 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                             type = OpCode.error;
                             txn = new ErrorTxn(e.code().intValue());
 
-                            LOG.info("Got user-level KeeperException when processing "
-                                    + request.toString() + " aborting remaining multi ops."
-                                    + " Error Path:" + e.getPath()
-                                    + " Error:" + e.getMessage());
+                            if (e.code().intValue() > Code.APIERROR.intValue()) {
+                                LOG.info("Got user-level KeeperException when processing {} aborting" +
+                                        " remaining multi ops. Error Path:{} Error:{}",
+                                        request.toString(), e.getPath(), e.getMessage());
+                            }
 
                             request.setException(e);
 
@@ -878,10 +879,11 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 request.getHdr().setType(OpCode.error);
                 request.setTxn(new ErrorTxn(e.code().intValue()));
             }
-            LOG.info("Got user-level KeeperException when processing "
-                    + request.toString()
-                    + " Error Path:" + e.getPath()
-                    + " Error:" + e.getMessage());
+
+            if (e.code().intValue() > Code.APIERROR.intValue()) {
+                LOG.info("Got user-level KeeperException when processing {} Error Path:{} Error:{}",
+                        request.toString(), e.getPath(), e.getMessage());
+            }
             request.setException(e);
         } catch (Exception e) {
             // log at error level as we are returning a marshalling
