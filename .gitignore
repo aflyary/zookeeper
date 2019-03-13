@@ -9,6 +9,7 @@ zookeeper-server/version-2/*
 # SVN
 .svn
 .revision
+git.properties
 
 # Eclipse
 .metadata
@@ -60,6 +61,7 @@ tmp/**/*
 .gradle
 *.patch
 *.swp
+.ant-targets-build.xml
 
 # C
 tags

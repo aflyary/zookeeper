@@ -19,6 +19,9 @@
 package org.apache.zookeeper.server;
 
 import org.apache.zookeeper.server.metric.AvgMinMaxCounter;
+import org.apache.zookeeper.server.metric.AvgMinMaxCounterSet;
+import org.apache.zookeeper.server.metric.AvgMinMaxPercentileCounter;
+import org.apache.zookeeper.server.metric.AvgMinMaxPercentileCounterSet;
 import org.apache.zookeeper.server.metric.Metric;
 import org.apache.zookeeper.server.metric.SimpleCounter;
 
@@ -45,20 +48,20 @@ public enum ServerMetrics {
      * Stats for read request. The timing start from when the server see the
      * request until it leave final request processor.
      */
-    READ_LATENCY(new AvgMinMaxCounter("readlatency")),
+    READ_LATENCY(new AvgMinMaxPercentileCounter("readlatency")),
 
     /**
      * Stats for request that need quorum voting. Timing is the same as read
      * request. We only keep track of stats for request that originated from
      * this machine only.
      */
-    UPDATE_LATENCY(new AvgMinMaxCounter("updatelatency")),
+    UPDATE_LATENCY(new AvgMinMaxPercentileCounter("updatelatency")),
 
     /**
      * Stats for all quorum request. The timing start from when the leader
      * see the request until it reach the learner.
      */
-    PROPAGATION_LATENCY(new AvgMinMaxCounter("propagation_latency")),
+    PROPAGATION_LATENCY(new AvgMinMaxPercentileCounter("propagation_latency")),
 
     FOLLOWER_SYNC_TIME(new AvgMinMaxCounter("follower_sync_time")),
     ELECTION_TIME(new AvgMinMaxCounter("election_time")),
@@ -73,8 +76,40 @@ public enum ServerMetrics {
 
     BYTES_RECEIVED_COUNT(new SimpleCounter("bytes_received_count")),
 
+    /**
+     * Fired watcher stats.
+     */
+    NODE_CREATED_WATCHER(new AvgMinMaxCounter("node_created_watch_count")),
+    NODE_DELETED_WATCHER(new AvgMinMaxCounter("node_deleted_watch_count")),
+    NODE_CHANGED_WATCHER(new AvgMinMaxCounter("node_changed_watch_count")),
+    NODE_CHILDREN_WATCHER(new AvgMinMaxCounter("node_children_watch_count")),
+
+
+    /*
+     * Number of dead watchers in DeadWatcherListener
+     */
+    ADD_DEAD_WATCHER_STALL_TIME(new SimpleCounter("add_dead_watcher_stall_time")),
+    DEAD_WATCHERS_QUEUED(new SimpleCounter("dead_watchers_queued")),
+    DEAD_WATCHERS_CLEARED(new SimpleCounter("dead_watchers_cleared")),
+    DEAD_WATCHERS_CLEANER_LATENCY(new AvgMinMaxPercentileCounter("dead_watchers_cleaner_latency")),
+
     RESPONSE_PACKET_CACHE_HITS(new SimpleCounter("response_packet_cache_hits")),
-    RESPONSE_PACKET_CACHE_MISSING(new SimpleCounter("response_packet_cache_misses"));
+    RESPONSE_PACKET_CACHE_MISSING(new SimpleCounter("response_packet_cache_misses")),
+    
+    /*
+     * Number of successful matches of expected ensemble name in EnsembleAuthenticationProvider.
+     */
+    ENSEMBLE_AUTH_SUCCESS(new SimpleCounter("ensemble_auth_success")),
+
+    /*
+     * Number of unsuccessful matches of expected ensemble name in EnsembleAuthenticationProvider.
+     */
+    ENSEMBLE_AUTH_FAIL(new SimpleCounter("ensemble_auth_fail")),
+
+    /*
+     * Number of client auth requests with no ensemble set in EnsembleAuthenticationProvider.
+     */
+    ENSEMBLE_AUTH_SKIP(new SimpleCounter("ensemble_auth_skip"));
 
     private final Metric metric;
 
@@ -84,6 +119,14 @@ public enum ServerMetrics {
 
     public void add(long value) {
         metric.add(value);
+    }
+
+    public void add(int key, long value) {
+        metric.add(key, value);
+    }
+
+    public void add(String key, long value) {
+        metric.add(key, value);
     }
 
     public void reset() {

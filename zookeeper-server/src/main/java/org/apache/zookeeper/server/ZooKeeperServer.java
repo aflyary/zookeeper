@@ -48,6 +48,7 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.KeeperException.SessionExpiredException;
 import org.apache.zookeeper.ZooDefs.OpCode;
+import org.apache.zookeeper.ZookeeperBanner;
 import org.apache.zookeeper.common.Time;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Id;
@@ -91,6 +92,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     static {
         LOG = LoggerFactory.getLogger(ZooKeeperServer.class);
 
+        ZookeeperBanner.printBanner(LOG);
+
         Environment.logEnv("Server environment:", LOG);
     }
 
@@ -103,6 +106,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     protected int minSessionTimeout = -1;
     /** value of -1 indicates unset, use default */
     protected int maxSessionTimeout = -1;
+    /** Socket listen backlog. Value of -1 indicates unset */
+    protected int listenBacklog = -1;
     protected SessionTracker sessionTracker;
     private FileTxnSnapLog txnLogFactory = null;
     private ZKDatabase zkDb;
@@ -190,7 +195,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
      * @param dataDir the directory to put the data
      */
     public ZooKeeperServer(FileTxnSnapLog txnLogFactory, int tickTime,
-            int minSessionTimeout, int maxSessionTimeout, ZKDatabase zkDb) {
+            int minSessionTimeout, int maxSessionTimeout, int clientPortListenBacklog,
+            ZKDatabase zkDb) {
         serverStats = new ServerStats(this);
         this.txnLogFactory = txnLogFactory;
         this.txnLogFactory.setServerStats(this.serverStats);
@@ -198,6 +204,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         this.tickTime = tickTime;
         setMinSessionTimeout(minSessionTimeout);
         setMaxSessionTimeout(maxSessionTimeout);
+        this.listenBacklog = clientPortListenBacklog;
+
         listener = new ZooKeeperServerListenerImpl(this);
 
         readResponseCache = new ResponseCache();
@@ -207,6 +215,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         LOG.info("Created server with tickTime " + tickTime
                 + " minSessionTimeout " + getMinSessionTimeout()
                 + " maxSessionTimeout " + getMaxSessionTimeout()
+                + " clientPortListenBacklog " + getClientPortListenBacklog()
                 + " datadir " + txnLogFactory.getDataDir()
                 + " snapdir " + txnLogFactory.getSnapDir());
     }
@@ -219,7 +228,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
      */
     public ZooKeeperServer(FileTxnSnapLog txnLogFactory, int tickTime)
             throws IOException {
-        this(txnLogFactory, tickTime, -1, -1, new ZKDatabase(txnLogFactory));
+        this(txnLogFactory, tickTime, -1, -1, -1, new ZKDatabase(txnLogFactory));
     }
 
     public ServerStats serverStats() {
@@ -251,6 +260,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         pwriter.println(getMinSessionTimeout());
         pwriter.print("maxSessionTimeout=");
         pwriter.println(getMaxSessionTimeout());
+        pwriter.print("clientPortListenBacklog=");
+        pwriter.println(getClientPortListenBacklog());
 
         pwriter.print("serverId=");
         pwriter.println(getServerId());
@@ -265,7 +276,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
              serverCnxnFactory.getMaxClientCnxnsPerHost(),
              getMinSessionTimeout(),
              getMaxSessionTimeout(),
-             getServerId());
+             getServerId(),
+             getClientPortListenBacklog());
     }
 
     /**
@@ -287,7 +299,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     public ZooKeeperServer(FileTxnSnapLog txnLogFactory)
         throws IOException
     {
-        this(txnLogFactory, DEFAULT_TICK_TIME, -1, -1, new ZKDatabase(txnLogFactory));
+        this(txnLogFactory, DEFAULT_TICK_TIME, -1, -1, -1, new ZKDatabase(txnLogFactory));
     }
 
     /**
@@ -1008,6 +1020,15 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         LOG.info("maxSessionTimeout set to {}", this.maxSessionTimeout);
     }
 
+    public int getClientPortListenBacklog() {
+        return listenBacklog;
+    }
+
+    public void setClientPortListenBacklog(int backlog) {
+        this.listenBacklog = backlog;
+        LOG.info("clientPortListenBacklog set to " + backlog);
+    }
+
     public int getClientPort() {
         return serverCnxnFactory != null ? serverCnxnFactory.getLocalPort() : -1;
     }
@@ -1185,6 +1206,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             Code authReturn = KeeperException.Code.AUTHFAILED;
             if(ap != null) {
                 try {
+                    // handleAuthentication may close the connection, to allow the client to choose
+                    // a different server to connect to.
                     authReturn = ap.handleAuthentication(new ServerAuthenticationProvider.ServerObjs(this, cnxn), authPacket.getAuth());
                 } catch(RuntimeException e) {
                     LOG.warn("Caught runtime exception from AuthenticationProvider: " + scheme + " due to " + e);
